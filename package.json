@@ -1,0 +1,26 @@
+{
+    "name": "carf-redux",
+    "version": "0.0.1",
+    "scripts": {
+        "dev": "vite dev",
+        "build": "vite build",
+        "preview": "vite preview",
+        "deploy": "npm run build && npx gh-pages -d build -t true"
+    },
+    "devDependencies": {
+        "@fontsource/fira-mono": "^4.5.10",
+        "@sveltejs/adapter-static": "^3.0.1",
+        "@sveltejs/kit": "^2.0.0",
+        "@sveltejs/vite-plugin-svelte": "^3.0.0",
+        "autoprefixer": "^10.4.18",
+        "gh-pages": "^6.1.1",
+        "postcss": "^8.4.35",
+        "svelte": "^4.2.7",
+        "tailwindcss": "^3.4.1",
+        "vite": "^5.0.3"
+    },
+    "type": "module",
+    "dependencies": {
+        "goertzel-node": "^2.1.0"
+    }
+}
