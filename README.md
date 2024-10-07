@@ -15,8 +15,10 @@ Each packet is 16 bytes, and consists of the following information:
 - Callsign: 36 bits. A character in a callsign is 6 bits long, and possible values for each character range from 0 to 36. 0-25 correspond to A-Z, 26-35 corresopnd to 0-9, and 36 is a slash. The callsign will be stored in the first n*6 bits, where n is the number of characters in the callsign. The rest of the characters in the callsign will be set to 0b111111.
 - Reed-Solomon Error Correction Code: 64 bits. Encoded using the Galois field for Aztec barcodes with a library from Zxing. For more info, see [here](https://github.com/cho45/reedsolomon.js/).
 
+Additionally, after every packet, the callsign of the operator is transmitted in morse code at 480 Hz.
+
 Combined with the source code, this should be all of the info needed to decode any transmissions from this program. The recommended ITU emissions designation for this program's output is 1K20J2D.
 
 **The FSK modem in this program may therefore be used on any VHF, UHF, SHF, and EHF ham bands.** I cannot speak to its legality on the HF bands, as Sec. 97.309(a)(4) only allows for open protocols that use Baudot codes, AMTOR codes, or ASCII. CARF Redux does not use any of these.
 
-**Do NOT use this program on any HF (or below) ham bands without first asking the FCC or verifying the legality of its use with a qualified legal professional.** Additionally, this section is **NOT** a substitute for legal advice; if you are concerned with the legality of any transmissions from this program, please consult an attorney. The ARRL seems to suggest that HF bands [such as 60m](https://www.arrl.org/60m-channel-allocation) may allow any J2D emission below 2.8 KHz. However, I have no clue.
+**Do NOT use this program on any HF (or below) ham bands without first asking the FCC or verifying the legality of its use with a qualified legal professional.** This section is **NOT** a substitute for legal advice; if you are concerned with the legality of any transmissions from this program, please consult an attorney. The ARRL seems to suggest that HF bands [such as 60m](https://www.arrl.org/60m-channel-allocation) may allow any J2D emission below 2.8 KHz. However, I have no clue.

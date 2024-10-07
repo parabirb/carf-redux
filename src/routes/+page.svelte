@@ -21,15 +21,72 @@
     let receivedText = "";
     let buffer = [];
 
+    // morse functions to comply with part 97
+    const MORSE_ALPHABET = {
+        "A": ".-",
+        "B": "-...",
+        "C": "-.-.",
+        "D": "-..",
+        "E": ".",
+        "F": "..-.",
+        "G": "--.",
+        "H": "....",
+        "I": "..",
+        "J": ".---",
+        "K": "-.-",
+        "L": ".-..",
+        "M": "--",
+        "N": "-.",
+        "O": "---",
+        "P": ".--.",
+        "Q": "--.-",
+        "R": ".-.",
+        "S": "...",
+        "T": "-",
+        "U": "..-",
+        "V": "...-",
+        "W": ".--",
+        "X": "-..-",
+        "Y": "-.- -",
+        "Z": "--..",
+        "1": ".----",
+        "2": "..---",
+        "3": "...--",
+        "4": "....-",
+        "5": ".....",
+        "6": "-....",
+        "7": "--...",
+        "8": "---..",
+        "9": "----.",
+        "0": "-----"
+    };
+    const MORSE_UNIT = SAMPLE_RATE / 10;
+
+    // function that generates morse for a callsign
+    function generateMorse(callsign) {
+        let array = [];
+        for (let i = 0; i < MORSE_UNIT * 4; i++) array.push(0);
+        for (let letter of callsign) {
+            for (let i = 0; i < MORSE_UNIT * 2; i++) array.push(0);
+            for (let unit of MORSE_ALPHABET[letter]) {
+                for (let i = 0; i < MORSE_UNIT; i++) array.push(0);
+                for (let i = 0; i < MORSE_UNIT * (unit === "." ? 1 : 3); i++) {
+                    array.push(Math.sin(i / ((SAMPLE_RATE / (BASE_TONE + (SPACING / 2))) / (Math.PI * 2))));
+                }
+            }
+        }
+        return array;
+    }
+
     // function to generate waveforms from packet bytes
-    function generateWaveform(msg) {
+    function generateWaveform(msg, callsign) {
         // add preamble to message
         msg = [0xe6, 0x21, ...msg];
         // turn message into bit string
         msg = msg.map(x => x.toString(NUM_TONES).padStart(BYTE_LENGTH, "0").split("").map(x => parseInt(x, NUM_TONES))).reduce((prev, cur) => [...prev, ...cur], []);
         console.log(msg);
         // create a new array for the waveform
-        let x = new Array(Math.floor(msg.length / BAUD_RATE) * 44100);
+        let x = new Array(Math.floor(msg.length / BAUD_RATE) * SAMPLE_RATE);
         // just fill it with on/off tone
         for (let i = 0; i < msg.length; i++) {
             for (let j = 0; j < SAMPLES_PER_SYMBOL; j++) {
@@ -38,6 +95,8 @@
         }
         // weird math bullshit i don't understand
         x = x.map(x => (x * Math.PI) / (SAMPLE_RATE / 2)).map((sum => value => sum += value)(0)).map(x => x % (Math.PI * 2)).map(x => Math.sin(x));
+        // push morse of our callsign to the array
+        x.push(...generateMorse(callsign));
         // turn it into a float32array and enjoy
         x = Float32Array.from(x);
         console.log(x.length);
@@ -45,9 +104,9 @@
     }
 
     // function to play bytes to the speaker
-    async function playMessage(msg) {
+    async function playMessage(msg, callsign) {
         // generate the waveform
-        const waveform = generateWaveform(msg);
+        const waveform = generateWaveform(msg, callsign);
         // create an audio context, copy waveform to the buffer, channel, whatever, just play it and shit
         const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
         const audioBuffer = audioContext.createBuffer(1, waveform.length, SAMPLE_RATE);
@@ -63,7 +122,7 @@
         packet.callsign = "W5FUR";
         packet.type = "place";
         packet.payload = 69;
-        playMessage(packet.toBytes());
+        playMessage(packet.toBytes(), "W5FUR");
     }
 
     // function that triggers when we get a packet
@@ -103,7 +162,7 @@
         const audioContext = new AudioContext();
         console.log(audioContext.sampleRate);
         // get the mic output
-        const stream = await navigator.mediaDevices.getUserMedia({ audio : true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, autoGainControl: true });
         const source = audioContext.createMediaStreamSource(stream);
         // create a bandpass filter to only pass our desired frequqencies through
         const filter = audioContext.createBiquadFilter();
