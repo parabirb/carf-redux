@@ -2,6 +2,7 @@
     import { Packet } from "$lib/packet";
     import GoertzelNode from "goertzel-node";
 
+    // consts
     const SAMPLE_RATE = 48000;
     const SPACING = 80;
     const BASE_TONE = 440;
@@ -12,12 +13,15 @@
     const SAMPLES_PER_SYMBOL = SAMPLE_RATE / BAUD_RATE;
     const SENSITIVITY = 1e-4;
     const SENSITIVITY_AFTER_START_RX = 1e-6;
+
+    // global variables
     let transmitting = false;
     let receiving = false;
     let text = "";
     let receivedText = "";
     let buffer = [];
 
+    // function to generate waveforms from packet bytes
     function generateWaveform(msg) {
         // add preamble to message
         msg = [0xe6, 0x21, ...msg];
@@ -40,8 +44,11 @@
         return x;
     }
 
+    // function to play bytes to the speaker
     async function playMessage(msg) {
+        // generate the waveform
         const waveform = generateWaveform(msg);
+        // create an audio context, copy waveform to the buffer, channel, whatever, just play it and shit
         const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
         const audioBuffer = audioContext.createBuffer(1, waveform.length, SAMPLE_RATE);
         audioBuffer.copyToChannel(waveform, 0);
@@ -59,37 +66,52 @@
         playMessage(packet.toBytes());
     }
 
+    // function that triggers when we get a packet
+    async function onPacketReceive() {
+
+    }
+
+    // function that triggers when the receiver thinks it's finished
     async function onReceiveFinish() {
+        // get the index of the start of the header
         let indexOfHeader = buffer.map(x => x.toString(NUM_TONES)).join("").indexOf((0xe621).toString(NUM_TONES));
         console.log(indexOfHeader);
         console.log(buffer);
-        if (indexOfHeader !== -1 && indexOfHeader + (BYTE_LENGTH * 16) <= buffer.length + 1) {
+        // if we have a header and the full packet is present (or missing a digit since we can fix that easily)
+        if (indexOfHeader !== -1 && indexOfHeader + (BYTE_LENGTH * PACKET_SIZE) <= buffer.length + 1) {
             console.log("here");
+            // make a uint8buffer for the packet and copy the packet into it
             let uint8Buffer = new Uint8Array(14);
             for (let i = 0; i < uint8Buffer.length; i++) {
                 uint8Buffer[i] = parseInt(buffer.slice(indexOfHeader + BYTE_LENGTH * 2 + i * BYTE_LENGTH, indexOfHeader + BYTE_LENGTH * 2 + (i + 1) * BYTE_LENGTH).map(x => x.toString(NUM_TONES)).join(""), NUM_TONES);
             }
+            // erset the buffer
             buffer = [];
-            window.packetBuffer = uint8Buffer;
             console.log(uint8Buffer);
+            // decode the packet
             let packet = new Packet();
             packet.fromBytes(uint8Buffer);
             console.log(packet);
+            onPacketReceive(packet);
         }
     }
 
+    // function that turns on the receiver
     async function receive() {
         window.Packet = Packet;
+        // create an audio context, log the sample rate
         const audioContext = new AudioContext();
         console.log(audioContext.sampleRate);
+        // get the mic output
         const stream = await navigator.mediaDevices.getUserMedia({ audio : true });
         const source = audioContext.createMediaStreamSource(stream);
+        // create a bandpass filter to only pass our desired frequqencies through
         const filter = audioContext.createBiquadFilter();
         filter.type = "bandpass";
-        filter.frequency.value = Math.sqrt(BASE_TONE * ((NUM_TONES - 1) * 16 + BASE_TONE));
-        filter.Q.value = Math.sqrt(BASE_TONE * ((NUM_TONES - 1) * 16 + BASE_TONE)) / (((NUM_TONES - 1) * 16 + BASE_TONE) - BASE_TONE);
+        filter.frequency.value = Math.sqrt(BASE_TONE * ((NUM_TONES - 1) * SPACING + BASE_TONE));
+        filter.Q.value = Math.sqrt(BASE_TONE * ((NUM_TONES - 1) * SPACING + BASE_TONE)) / (((NUM_TONES - 1) * SPACING + BASE_TONE) - BASE_TONE);
         source.connect(filter);
-
+        // hook goertzels to the output of the filter
         let goertzels = [];
         for (let i = 0; i < NUM_TONES; i++) {
             goertzels.push(new GoertzelNode(audioContext));
@@ -97,34 +119,39 @@
             goertzels[i].threshold = SENSITIVITY;
             filter.connect(goertzels[i]);
         }
-
-        let startDecode;
+        // variables
         let detectionInterval;
         let detect;
-
+        // loop to detect our signal
         detect = () => {
             //console.log(goertzelSpace.power);
+            // if we're receiving, return; shouldn't be triggered but just in case
             if (receiving) return;
+            // variables
             let signalDetected = false;
             let firstGoertzel = 0;
             let symbolCount = 0;
             let bufferStart = buffer.length;
+            // check for our tone with goertzel
             for (let i = 0; i < NUM_TONES; i++) {
                 if (goertzels[i].detected) {
                     signalDetected = true;
                     if (goertzels[i].power > goertzels[firstGoertzel].power) firstGoertzel = i;
                 }
             }
+            // if we have a signal and it looks right
             if (signalDetected && firstGoertzel === parseInt((0xe).toString(NUM_TONES)[0], NUM_TONES)) {
                 console.log(goertzels[firstGoertzel].power)
+                // set recv and clear the detect interval
                 receiving = true;
                 clearInterval(detectionInterval);
-                if (!startDecode) startDecode = Date.now();
                 console.log("receiving");
                 console.log(1000 / BAUD_RATE);
+                // add the first symbol to the buffer
                 buffer = [...buffer, firstGoertzel];
-                let bitInterval = setInterval(() => {
-                    console.log(Date.now() - startDecode);
+                // create an interval to get each symbol
+                let symbolInterval = setInterval(() => {
+                    // find the strongest frequency
                     let detected = false;
                     let max = 0;
                     for (let i = 0; i < NUM_TONES; i++) {
@@ -135,15 +162,18 @@
                             }
                         }
                     }
+                    // if we don't have a freq or if our safeguards activate
                     if (!detected || symbolCount > 64 || (symbolCount === BYTE_LENGTH + 1 && parseInt(buffer.slice(bufferStart).map(x => x.toString(NUM_TONES)).join(""), NUM_TONES) !== 0xe621)) {
-                        receivedText = buffer.map(x => x.toString(2).padStart(Math.log(NUM_TONES) / Math.log(2), "0")).join("");
-                        console.log(receivedText);
-                        console.log(Date.now() - startDecode);
-                        clearInterval(bitInterval);
+                        // clear the symbol interval
+                        clearInterval(symbolInterval);
+                        // set the detect interval again
                         detectionInterval = setInterval(detect, 10);
+                        // set receiving to false
                         receiving = false;
+                        // trigger onreceivefinish
                         onReceiveFinish();
                     }
+                    // if we do have a symbol, just add it to the buffer and increase symbol count
                     else {
                         buffer = [...buffer, max];
                         symbolCount++;
@@ -151,7 +181,7 @@
                 }, 1000 / BAUD_RATE);
             }
         }
-
+        // set the detection interval
         detectionInterval = setInterval(detect, 10);
     }
 
