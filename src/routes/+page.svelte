@@ -3,13 +3,15 @@
     import GoertzelNode from "goertzel-node";
 
     const SAMPLE_RATE = 48000;
-    const SPACING = 40;
+    const SPACING = 80;
     const BASE_TONE = 440;
-    const BAUD_RATE = 4;
+    const BAUD_RATE = 5;
     const NUM_TONES = 16;
+    const PACKET_SIZE = 16;
     const BYTE_LENGTH = (0xff).toString(NUM_TONES).length;
     const SAMPLES_PER_SYMBOL = SAMPLE_RATE / BAUD_RATE;
     const SENSITIVITY = 1e-4;
+    const SENSITIVITY_AFTER_START_RX = 1e-6;
     let transmitting = false;
     let receiving = false;
     let text = "";
@@ -18,7 +20,7 @@
 
     function generateWaveform(msg) {
         // add preamble to message
-        msg = [0xe6, 0x21, ...msg]
+        msg = [0xe6, 0x21, ...msg];
         // turn message into bit string
         msg = msg.map(x => x.toString(NUM_TONES).padStart(BYTE_LENGTH, "0").split("").map(x => parseInt(x, NUM_TONES))).reduce((prev, cur) => [...prev, ...cur], []);
         console.log(msg);
@@ -52,31 +54,32 @@
     async function play() {
         let packet = new Packet();
         packet.callsign = "W5FUR";
-        packet.type = "init";
+        packet.type = "place";
         packet.payload = 69;
         playMessage(packet.toBytes());
     }
 
     async function onReceiveFinish() {
+        let indexOfHeader = buffer.map(x => x.toString(NUM_TONES)).join("").indexOf((0xe621).toString(NUM_TONES));
+        console.log(indexOfHeader);
         console.log(buffer);
-        let uint8Buffer = new Uint8Array(Math.ceil(buffer.length / BYTE_LENGTH));
-        let packetStart = -1;
-        for (let i = 0; i < uint8Buffer.length; i++) {
-            uint8Buffer[i] = parseInt(buffer.slice(i * BYTE_LENGTH, (i + 1) * BYTE_LENGTH).map(x => x.toString(NUM_TONES)).join(""), NUM_TONES);
-            if (uint8Buffer[i] === 0x21 && uint8Buffer.length > 1 && uint8Buffer[i - 1] === 0xe6) {
-                console.log("here!");
-                packetStart = i - 1;
+        if (indexOfHeader !== -1 && indexOfHeader + (BYTE_LENGTH * 16) <= buffer.length + 1) {
+            console.log("here");
+            let uint8Buffer = new Uint8Array(14);
+            for (let i = 0; i < uint8Buffer.length; i++) {
+                uint8Buffer[i] = parseInt(buffer.slice(indexOfHeader + BYTE_LENGTH * 2 + i * BYTE_LENGTH, indexOfHeader + BYTE_LENGTH * 2 + (i + 1) * BYTE_LENGTH).map(x => x.toString(NUM_TONES)).join(""), NUM_TONES);
             }
-        }
-        if (packetStart !== -1 && (packetStart + 32) <= uint8Buffer.length) {
             buffer = [];
+            window.packetBuffer = uint8Buffer;
+            console.log(uint8Buffer);
             let packet = new Packet();
-            packet.fromBytes(uint8Buffer.slice(packetStart, packetStart + 32));
+            packet.fromBytes(uint8Buffer);
             console.log(packet);
         }
     }
 
     async function receive() {
+        window.Packet = Packet;
         const audioContext = new AudioContext();
         console.log(audioContext.sampleRate);
         const stream = await navigator.mediaDevices.getUserMedia({ audio : true });
@@ -104,13 +107,15 @@
             if (receiving) return;
             let signalDetected = false;
             let firstGoertzel = 0;
+            let symbolCount = 0;
+            let bufferStart = buffer.length;
             for (let i = 0; i < NUM_TONES; i++) {
                 if (goertzels[i].detected) {
                     signalDetected = true;
                     if (goertzels[i].power > goertzels[firstGoertzel].power) firstGoertzel = i;
                 }
             }
-            if (signalDetected) {
+            if (signalDetected && firstGoertzel === parseInt((0xe).toString(NUM_TONES)[0], NUM_TONES)) {
                 console.log(goertzels[firstGoertzel].power)
                 receiving = true;
                 clearInterval(detectionInterval);
@@ -123,14 +128,14 @@
                     let detected = false;
                     let max = 0;
                     for (let i = 0; i < NUM_TONES; i++) {
-                        if (goertzels[i].detected) {
+                        if (goertzels[i].power > SENSITIVITY_AFTER_START_RX) {
                             detected = true;
                             if (goertzels[i].power > goertzels[max].power) {
                                 max = i;
                             }
                         }
                     }
-                    if (!detected) {
+                    if (!detected || symbolCount > 64 || (symbolCount === BYTE_LENGTH + 1 && parseInt(buffer.slice(bufferStart).map(x => x.toString(NUM_TONES)).join(""), NUM_TONES) !== 0xe621)) {
                         receivedText = buffer.map(x => x.toString(2).padStart(Math.log(NUM_TONES) / Math.log(2), "0")).join("");
                         console.log(receivedText);
                         console.log(Date.now() - startDecode);
@@ -139,7 +144,10 @@
                         receiving = false;
                         onReceiveFinish();
                     }
-                    else buffer = [...buffer, max];
+                    else {
+                        buffer = [...buffer, max];
+                        symbolCount++;
+                    }
                 }, 1000 / BAUD_RATE);
             }
         }

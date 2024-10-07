@@ -67,7 +67,8 @@ export class Packet {
     // create a message from bytes
     fromBytes(bytes) {
         // convert our buffer to an array after decode
-        this.decoder.decode(bytes, 24);
+        this.decoder.decode(bytes, 8);
+        console.log(bytes);
         let array = [...bytes.slice(0, 6)];
         // turn this array into a string of bits
         array = array.map(x => x.toString(2).padStart(8, "0").split("")).reduce((prev, cur) => [...prev, ...cur], []);
@@ -106,14 +107,14 @@ export class Packet {
             else for (let j = 5; j >= 0; j--) bitArray.push((CALLSIGN_ENCODING.indexOf(this.callsign[i]) & (0x1 << j)) >> j);
         }
         // create a uint8array
-        let byteArray = new Uint8Array(30);
+        let byteArray = new Uint8Array(14);
         // push shit to the byte array
         for (let i = 0; i < 48; i++) {
             byteArray[Math.floor(i / 8)] <<= 1;
             byteArray[Math.floor(i / 8)] |= +bitArray[i];
         }
         // encode the message
-        this.encoder.encode(byteArray, 24);
+        this.encoder.encode(byteArray, 8);
         // return a bytearray
         return byteArray;
     }
