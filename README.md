@@ -12,7 +12,7 @@ Each packet is 16 bytes, and consists of the following information:
 - Preamble: 0xe621 (used to detect the start of a packet)
 - Message type: 3 bits (0 is initialize game, 1 is join game, 2 is start game, 3 is place card, 4 is choose player, 5 is end game, and 6 & 7 are invalid)
 - Payload: 9 bits, corresponds to the index of a card if message type is place, corresponds to the index of a user in the game if message type is choose.
-- Callsign: 36 bits. A character in a callsign is 6 bits long, and possible values for each character range from 0 to 36. 0-25 correspond to A-Z, 26-35 corresopnd to 0-9, and 36 is a slash. The callsign will be stored in the first n*6 bits, where n is the number of characters in the callsign. The rest of the characters in the callsign will be set to 0b111111.
+- Callsign: 36 bits. A character in a callsign is 6 bits long, and possible values for each character range from 0 to 36. 0-25 correspond to A-Z, 26-35 correspond to 0-9, and 36 is a slash. The callsign will be stored in the first n*6 bits, where n is the number of characters in the callsign. The rest of the characters in the callsign will be set to 0b111111.
 - Reed-Solomon Error Correction Code: 64 bits. Encoded using the Galois field for Aztec barcodes with a library from Zxing. For more info, see [here](https://github.com/cho45/reedsolomon.js/).
 
 Additionally, after every packet, the callsign of the operator is transmitted in morse code at 480 Hz.
